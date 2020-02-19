@@ -63,7 +63,7 @@ class Net(nn.Module):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
@@ -366,7 +366,7 @@ def main():
 
                     print('Accuracy before filter selection on PCA used data')
                     _, acc_train_sudo = test(args, model, device, train_loader_sudo,sudo) 
-                    writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i) acc_train_sudo, 1)
+                    writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 1)
             
                     ## Filter Selection Step 
                     optimal_num_filters[i]=filter_selection(model.act[list(model.act.keys())[i]],lx,i, threshold=t)
