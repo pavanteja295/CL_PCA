@@ -11,7 +11,7 @@ from collections import OrderedDict
 import numpy as np
 import os
 import os.path
-from logger import Logger
+# from logger import Logger
 from cifar10_utilities import*
 
 ########-------------------------------------------- Model Class --------------------------------##################
@@ -115,7 +115,7 @@ def main():
 
     # seeds and device setup 
     use_cuda = not args.no_cuda and torch.cuda.is_available()
-    logger = Logger('./logs')
+#    logger = Logger('./logs')
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -125,7 +125,7 @@ def main():
     taskA=[];taskB=[];taskC=[];taskD=[];taskE=[]
     test_taskA=[];test_taskB=[];test_taskC=[];test_taskD=[];test_taskE=[]
     
-    train_dataset= datasets.CIFAR10(root='./data', train=True, download=False,transform=transforms.Compose([
+    train_dataset= datasets.CIFAR10(root='./data', train=True, download=True,transform=transforms.Compose([
                             transforms.ToTensor(),
                             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]))
     
@@ -222,7 +222,8 @@ def main():
                     adjust_learning_rate(optimizer, epoch, args) 
                 elif (args.split > 1 and epoch == int(args.train_epoch*0.9)):
                     adjust_learning_rate(optimizer, epoch, args) 
-                loss_hist=train_next(args, model, device, train_loader, optimizer, epoch,logger,loss_hist,filter_num)
+                # logger removed
+                loss_hist=train_next(args, model, device, train_loader, optimizer, epoch,loss_hist,filter_num)
                 loss_test=test(args, model, device, test_loader,loss_test)
 
             ## Saving the test accuracies in the list 

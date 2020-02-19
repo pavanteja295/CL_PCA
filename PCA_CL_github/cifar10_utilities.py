@@ -12,7 +12,7 @@ import numpy as np
 import os
 import os.path
 import pdb
-from logger import Logger
+# from logger import Logger
 import math 
 from torch.autograd import Variable
 from torch.nn.functional import normalize
@@ -102,7 +102,7 @@ def filter_selection(activations,num_filterA, layer, threshold=0.995):
 
 ###########-------------------------------training---------------------------------------#########
 
-def train_next(args, model, device, train_loader, optimizer, epoch,logger,loss_hist,filter_num):
+def train_next(args, model, device, train_loader, optimizer, epoch,loss_hist,filter_num):
     """Trains the model with data of the current task"""
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
