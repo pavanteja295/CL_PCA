@@ -251,6 +251,7 @@ def main():
             
             test_masked_model= Net().to(device) 
             test_masked_model.load_state_dict(model_param['state_dict'])
+            print('Accuracy real is')
             call_test_model (model,test_masked_model, args , device, test_loader, sudo, opt_filter_list[args.split],keep_classifier_list,idx) 
             
         ############----------------------------------------Re-train------------------------------------###################  
