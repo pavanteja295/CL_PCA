@@ -284,8 +284,8 @@ def main():
                     opt_filter_list = []
                     filter_num =[]
                 
-                print('Test accuracy before even estimating PCA components' )
-                loss_test=test(args, model, device, test_loader,loss_test) 
+            print('Test accuracy before even PCA compression' )
+            loss_test=test(args, model, device, test_loader,loss_test) 
 
 
             for i in range(5): # Here '5' corresponds to 5 convolutional layers 
@@ -341,8 +341,16 @@ def main():
                     print ('Collecting activation for Selection Step at layer {}'.format(i+1) ) 
                     # specify the amount of PCA variance kept  
                     t = args.var_kept
+
+                    print('Accuracy before filter selection on all train data')
+                    test(args, model, device, train_loader,[]) 
+                    print('Accuracy before filter selection on all test data')
+                    test(args, model, device, test_loader,[]) 
                     #collecting activation 
+
+                    print('Accuracy before filter selection on PCA used data')
                     test(args, model, device, train_loader_sudo,sudo) 
+            
                     ## Filter Selection Step 
                     optimal_num_filters[i]=filter_selection(model.act[list(model.act.keys())[i]],lx,i, threshold=t)
                     print ('Optimal filter list: {} after layer {} PCAs'.format (optimal_num_filters,i+1))
@@ -364,8 +372,17 @@ def main():
 
                 print ('Starting learning rate for retraining Task{} is {}'.format(idx+1,args.lr))
 
-                print('Test accuracy before finetuning' )
-                loss_test=test(args, model, device, test_loader,loss_test) 
+                print('Accuracy after filter selection before finetuning on all train data')
+                test(args, model, device, train_loader,[]) 
+                print('Accuracy after filter selection before finetuning on all test data')
+                test(args, model, device, test_loader,[]) 
+                #collecting activation 
+
+                print('Accuracy after filter selection before finetuning on PCA used data')
+                test(args, model, device, train_loader_sudo,sudo) 
+
+                # print('Test accuracy before finetuning' )
+                # loss_test=test(args, model, device, test_loader,loss_test) 
                 optimizer = optim.SGD(optim_list, lr=args.lr, momentum=args.momentum) # using SGD with momentum 
                 if args.finetune_pca:
                     for epoch in range(1, args.epoch_list[i] + 1):   
