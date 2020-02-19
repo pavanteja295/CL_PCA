@@ -355,19 +355,19 @@ def main():
                                 {'params': model.fc1.parameters()}]
 
                 print ('Starting learning rate for retraining Task{} is {}'.format(idx+1,args.lr))
-                optimizer = optim.SGD(optim_list, lr=args.lr, momentum=args.momentum) # using SGD with momentum 
+                # optimizer = optim.SGD(optim_list, lr=args.lr, momentum=args.momentum) # using SGD with momentum 
 
-                for epoch in range(1, args.epoch_list[i] + 1):   
-                    if ( epoch == int(args.epoch_list[i]*0.9) ):
-                    	adjust_learning_rate(optimizer,epoch,args)
-                    layer=i       
+                # for epoch in range(1, args.epoch_list[i] + 1):   
+                #     if ( epoch == int(args.epoch_list[i]*0.9) ):
+                #     	adjust_learning_rate(optimizer,epoch,args)
+                #     layer=i       
                     #loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
                     #loss_test=test(args, model, device, test_loader,loss_test) 
 
             ##--------------------------------------------------------Saving --------------------------------------------------------## 
             # saving test accuracy after retraining 
-            acc=0 #test_acc_save(args, model, device, test_loader,loss_test)
-            accuracy_retrain.append(acc)
+            #acc=0 #test_acc_save(args, model, device, test_loader,loss_test)
+            #accuracy_retrain.append(acc)
       
             lx= optimal_num_filters
             print ('Current Task  filter list:',lx)
