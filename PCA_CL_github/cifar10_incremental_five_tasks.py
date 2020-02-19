@@ -13,6 +13,7 @@ import os
 import os.path
 # from logger import Logger
 from cifar10_utilities import*
+from tensorboardX import SummaryWriter
 
 ########-------------------------------------------- Model Class --------------------------------##################
 class Net(nn.Module):
@@ -96,13 +97,16 @@ def main():
                         help='For Saving the current Model: 1==save')
     parser.add_argument('--param_dir', default='CIFAR10_task', type=str,   
                         help='Pre-trained weights directory')
-    parser.add_argument('--file_suffix', type=int, default=1, metavar='N',
-                        help='adds suffix to file name')
+    # parser.add_argument('--file_suffix', type=int, default=1, metavar='N',
+    #                     # help='adds suffix to file name')
     parser.add_argument('--num_out', type=int, default=2, metavar='N',
                         help='Number of output units for this task (default: 2)')
     parser.add_argument('--var_kept', type=float, default=0.995, metavar='VK',
                         help='percentage of PCA variance kept during training (default: 99.5%)')
     parser.add_argument('--finetune_pca',  default=False, action='store_true', help='dont tune after PCA')
+
+    parser.add_argument('--file_suffix', dest='file_suffix', default='default', type=str,
+                        help="Exp name to be added to the suffix")
     # parser.add_argument('--', type=float, default=0.995, metavar='VK',
     #                     help='percentage of PCA variance kept during training (default: 99.5%)')
 
@@ -179,7 +183,8 @@ def main():
     # creating lists to save network accuracies 
     accuracy_train =[]
     accuracy_retrain =[]
-    
+    writer = SummaryWriter(log_dir="runs/" + args.file_suffix)
+
     for idx in range (5):
         #args.split = input('specify args.split:')
         args.split = idx 
@@ -189,7 +194,7 @@ def main():
         train_loader_sudo = torch.utils.data.DataLoader(train_task[args.split],batch_size=1000, shuffle=True, **kwargs)
         print('Loading split CIFAR10 test task {}...'.format(args.split+1))
         test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=1000, shuffle=True, **kwargs) ## test_task name
-        
+                
     #######--------------------------------------------------train------------------------------------###################      
         if (args.train ==1):            
             if args.split > 0 :
@@ -227,7 +232,7 @@ def main():
                     adjust_learning_rate(optimizer, epoch, args) 
                 # logger removed
                 loss_hist=train_next(args, model, device, train_loader, optimizer, epoch,loss_hist,filter_num)
-                loss_test=test(args, model, device, test_loader,loss_test)
+                loss_test, acc =test(args, model, device, test_loader,loss_test)
 
             ## Saving the test accuracies in the list 
             acc=test_acc_save(args, model, device, test_loader,loss_test)
@@ -283,15 +288,21 @@ def main():
                     keep_classifier_list = []
                     opt_filter_list = []
                     filter_num =[]
-                
-            print('Test accuracy before even PCA compression' )
-            loss_test=test(args, model, device, test_loader,loss_test) 
-
 
             for i in range(5): # Here '5' corresponds to 5 convolutional layers 
                 out_size    =model.state_dict()[list(model.state_dict().keys())[i*2]].size(0)
                 inp_size    =model.state_dict()[list(model.state_dict().keys())[i*2]].size(1)
                 k_size      =model.state_dict()[list(model.state_dict().keys())[i*2]].size(2)
+
+                print('Test accuracy before even PCA compression' ) 
+                loss_test, acc_bf_pca =test(args, model, device, test_loader,loss_test) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i), acc_bf_pca, 0)
+
+                loss_test, acc_all_train =test(args, model, device, train_loader,loss_test) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 0)
+
+                loss_test, acc_train_sudo =test(args, model, device, train_loader_sudo, loss_test) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 0)
 
                 #########------------------------------------- Run PCA ------------------------------------############
                 if (args.split == 0):
@@ -321,6 +332,7 @@ def main():
                 else: 
                     print ('Collecting activation for PCA Transformation Step at layer {}'.format(i+1))          
                     test(args, model, device, train_loader_sudo,sudo) #.......collecting activation 
+
                     ## PCA Transformation Step
                     pca_xform=PCA_transformation(model.act[list(model.act.keys())[i]],model_param,lx, i, threshold=0.999)
                     
@@ -343,13 +355,18 @@ def main():
                     t = args.var_kept
 
                     print('Accuracy before filter selection on all train data')
-                    test(args, model, device, train_loader,[]) 
+                    _, acc_all_train = test(args, model, device, train_loader,[]) 
+                    writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 1)
+                    
+
                     print('Accuracy before filter selection on all test data')
-                    test(args, model, device, test_loader,[]) 
+                    _, acc_all_test = test(args, model, device, test_loader,[]) 
+                    writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i), acc_all_test, 1)
                     #collecting activation 
 
                     print('Accuracy before filter selection on PCA used data')
-                    test(args, model, device, train_loader_sudo,sudo) 
+                    _, acc_train_sudo = test(args, model, device, train_loader_sudo,sudo) 
+                    writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i) acc_train_sudo, 1)
             
                     ## Filter Selection Step 
                     optimal_num_filters[i]=filter_selection(model.act[list(model.act.keys())[i]],lx,i, threshold=t)
@@ -373,13 +390,17 @@ def main():
                 print ('Starting learning rate for retraining Task{} is {}'.format(idx+1,args.lr))
 
                 print('Accuracy after filter selection before finetuning on all train data')
-                test(args, model, device, train_loader,[]) 
+                _, acc_all_train = test(args, model, device, train_loader,[]) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 2)
+
                 print('Accuracy after filter selection before finetuning on all test data')
-                test(args, model, device, test_loader,[]) 
+                _, acc_all_test = test(args, model, device, test_loader,[]) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i) , acc_all_test, 2)
                 #collecting activation 
 
                 print('Accuracy after filter selection before finetuning on PCA used data')
-                test(args, model, device, train_loader_sudo,sudo) 
+                _, acc_train_sudo = test(args, model, device, train_loader_sudo,sudo) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 2)
 
                 # print('Test accuracy before finetuning' )
                 # loss_test=test(args, model, device, test_loader,loss_test) 
@@ -392,9 +413,19 @@ def main():
                         loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
             
                 chk_finetune = 'finetune' if args.finetune_pca else 'NO finetune'
+
                 print('Test accuracy with ' +  chk_finetune )
-                loss_test=test(args, model, device, test_loader,loss_test) 
-                
+                loss_test, acc_all_fine = test(args, model, device, test_loader,loss_test) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i), acc_all_fine, 3)
+
+                print('Test accuracy with ' +  chk_finetune )
+                loss_test, acc_all_train = test(args, model, device, test_loader,loss_test) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 3)
+
+                print('Test accuracy with ' +  chk_finetune )
+                loss_test, acc_train_sudo = test(args, model, device, test_loader,loss_test) 
+                writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 3)
+
                 acc=test_acc_save(args, model, device, test_loader,loss_test)
                 accuracy_retrain.append(acc)
 

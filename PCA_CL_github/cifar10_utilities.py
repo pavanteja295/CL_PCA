@@ -248,8 +248,9 @@ def test(args, model, device, test_loader,loss_test): ## main test function
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
+    acc = 100. * correct / len(test_loader.dataset)
     loss_test.append(test_loss)
-    return loss_test
+    return loss_test, acc
   
 def test_acc_save(args, model, device, test_loader,loss_test): 
     model.eval()
