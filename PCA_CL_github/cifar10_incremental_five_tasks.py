@@ -102,6 +102,9 @@ def main():
                         help='Number of output units for this task (default: 2)')
     parser.add_argument('--var_kept', type=float, default=0.995, metavar='VK',
                         help='percentage of PCA variance kept during training (default: 99.5%)')
+    parser.add_argument('--finetune_pca',  default=False, action='store_true', help='dont tune after PCA')
+    # parser.add_argument('--', type=float, default=0.995, metavar='VK',
+    #                     help='percentage of PCA variance kept during training (default: 99.5%)')
 
     parser.add_argument('--epoch_list', nargs='+', type=int)
     args = parser.parse_args()
@@ -281,6 +284,10 @@ def main():
                     opt_filter_list = []
                     filter_num =[]
                 
+                print('Test accuracy before even estimating PCA components' )
+                loss_test=test(args, model, device, test_loader,loss_test) 
+
+
             for i in range(5): # Here '5' corresponds to 5 convolutional layers 
                 out_size    =model.state_dict()[list(model.state_dict().keys())[i*2]].size(0)
                 inp_size    =model.state_dict()[list(model.state_dict().keys())[i*2]].size(1)
@@ -357,21 +364,25 @@ def main():
 
                 print ('Starting learning rate for retraining Task{} is {}'.format(idx+1,args.lr))
 
+                print('Test accuracy before finetuning' )
+                loss_test=test(args, model, device, test_loader,loss_test) 
                 optimizer = optim.SGD(optim_list, lr=args.lr, momentum=args.momentum) # using SGD with momentum 
-
-                for epoch in range(1, args.epoch_list[i] + 1):   
-                    if ( epoch == int(args.epoch_list[i]*0.9) ):
-                    	adjust_learning_rate(optimizer,epoch,args)
-                    layer=i       
-                    loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
+                if args.finetune_pca:
+                    for epoch in range(1, args.epoch_list[i] + 1):   
+                        if ( epoch == int(args.epoch_list[i]*0.9) ):
+                        	adjust_learning_rate(optimizer,epoch,args)
+                        layer=i       
+                        loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
             
-            print('Test accuracy withour retraining is acc real')
-            loss_test=test(args, model, device, test_loader,loss_test) 
+                chk_finetune = 'finetune' if args.finetune_pca else 'NO finetune'
+                print('Test accuracy with ' +  chk_finetune )
+                loss_test=test(args, model, device, test_loader,loss_test) 
+                
+                acc=test_acc_save(args, model, device, test_loader,loss_test)
+                accuracy_retrain.append(acc)
 
             ##--------------------------------------------------------Saving --------------------------------------------------------## 
             # saving test accuracy after retraining 
-            acc=0 #test_acc_save(args, model, device, test_loader,loss_test)
-            accuracy_retrain.append(acc)
       
             lx= optimal_num_filters
             print ('Current Task  filter list:',lx)
