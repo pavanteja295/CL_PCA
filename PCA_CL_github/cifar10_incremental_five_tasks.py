@@ -62,7 +62,7 @@ class Net(nn.Module):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
@@ -268,6 +268,7 @@ def main():
                 model.load_state_dict(model_param['state_dict'])
                 
                 if (args.split > 0):
+                    import pdb; pdb.set_trace()
                     running_param = torch.load(running_param_fname)# load running filter and class Weight and bias
                     keep_classifier_list = running_param['classifier_list']
                     opt_filter_list = running_param['opt_filter_list']
@@ -292,9 +293,11 @@ def main():
                     # specify the amount of PCA variance kept  
                     t = args.var_kept 
                     ## ----- First PCA Compression step (For 1st Task)---- ##
-                    optimal_num_filters[i],pca=run_PCA(model.act[list(model.act.keys())[i]],0,out_size,threshold=t) 
+                    
+                    optimal_num_filters[i], pca = run_PCA(model.act[list(model.act.keys())[i]],0,out_size,threshold=t) 
                     print('Opt_num_filter for task 1: ', optimal_num_filters) 
                     filter1 =model.state_dict()[list(model.state_dict().keys())[i*2]].cpu().numpy().reshape(out_size,inp_size*k_size*k_size).swapaxes(0,1)
+                    # projecting the filters into new PCA basis
                     out_filt=np.matmul(filter1,np.transpose(pca.components_)) 
                     ## Applying PCA transformation to the filters 
                     bias1   =model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].cpu().numpy()
@@ -307,7 +310,7 @@ def main():
                     model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt))
                     model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias))
                 
-                else:           
+                else: 
                     print ('Collecting activation for PCA Transformation Step at layer {}'.format(i+1))          
                     test(args, model, device, train_loader_sudo,sudo) #.......collecting activation 
                     ## PCA Transformation Step
@@ -358,12 +361,12 @@ def main():
                     if ( epoch == int(args.epoch_list[i]*0.9) ):
                     	adjust_learning_rate(optimizer,epoch,args)
                     layer=i       
-                    loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
-                    loss_test=test(args, model, device, test_loader,loss_test) 
+                    #loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
+                    #loss_test=test(args, model, device, test_loader,loss_test) 
 
             ##--------------------------------------------------------Saving --------------------------------------------------------## 
             # saving test accuracy after retraining 
-            acc=test_acc_save(args, model, device, test_loader,loss_test)
+            acc=0 #test_acc_save(args, model, device, test_loader,loss_test)
             accuracy_retrain.append(acc)
       
             lx= optimal_num_filters
@@ -373,7 +376,7 @@ def main():
             
             ## Final PCA for finding references for the next task -- will use in determining how many filters we will need for next task in each layers 
             for ii in range (5):
-                out_size    =model.state_dict()[list(model.state_dict().keys())[ii*2]].size(0)
+                out_size = model.state_dict()[list(model.state_dict().keys())[ii*2]].size(0)
                 test(args, model, device, train_loader_sudo,sudo) #.......collecting activation 
                 _,pca=run_PCA(model.act[list(model.act.keys())[ii]],0,out_size)
                 singular_values.append(pca.singular_values_)
