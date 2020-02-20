@@ -323,8 +323,8 @@ def main():
                     out_bias=np.matmul(bias1,np.transpose(pca.components_))    
 
                     ### Zeroing out certain portion of weights keeping the required amount of filters from the task                 
-                    out_filt[:,int(optimal_num_filters[i]):]=0
-                    out_bias[int(optimal_num_filters[i]):]=0
+                    #out_filt[:,int(optimal_num_filters[i]):]=0
+                    #out_bias[int(optimal_num_filters[i]):]=0
                     out_filt=out_filt.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
                     model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt))
                     model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias))
@@ -373,11 +373,11 @@ def main():
                     print ('Optimal filter list: {} after layer {} PCAs'.format (optimal_num_filters,i+1))
                     
                     ### Zeroing out certain portion of weights 
-                    out_filt_next[:,int(optimal_num_filters[i]):]=0
-                    out_bias_next[int(optimal_num_filters[i]):]=0
-                    out_filt_next=out_filt_next.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
-                    model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt_next))
-                    model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias_next))
+                    #out_filt_next[:,int(optimal_num_filters[i]):]=0
+                    #out_bias_next[int(optimal_num_filters[i]):]=0
+                    # out_filt_next=out_filt_next.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
+                    # model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt_next))
+                    # model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias_next))
                 
                 #########------------------------------------- Retraining after PCA ------------------------------------############
                 optim_list = [  {'params': model.conv1.parameters()},
