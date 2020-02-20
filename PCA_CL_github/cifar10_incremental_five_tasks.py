@@ -105,7 +105,7 @@ def main():
                         help='percentage of PCA variance kept during training (default: 99.5%)')
     parser.add_argument('--finetune_pca',  default=False, action='store_true', help='dont tune after PCA')
     parser.add_argument('--add_pca',  default=False, action='store_true', help='dont tune after PCA')
-    
+    parser.add_argument('--zero_out_others',  default=False, action='store_true', help='dont tune after PCA')    
     parser.add_argument('--file_suffix', dest='file_suffix', default='default', type=str,
                         help="Exp name to be added to the suffix")
     # parser.add_argument('--', type=float, default=0.995, metavar='VK',
@@ -322,11 +322,12 @@ def main():
 
                     ## Applying PCA transformation to the filters 
                     if args.add_pca:
-                        # pca_xform = 
+                        print('Project into PCA')
                         out_filt = np.matmul(filter1,np.transpose(pca.components_))    
                         
                         out_bias = np.matmul(bias1,np.transpose(pca.components_))  
                     else:
+                        print('No projection to PCA')
                         out_filt =  filter1
                         out_bias = bias1
 
@@ -335,8 +336,10 @@ def main():
                     
 
                     ### Zeroing out certain portion of weights keeping the required amount of filters from the task                 
-                    out_filt[:,int(optimal_num_filters[i]):]=0
-                    out_bias[int(optimal_num_filters[i]):]=0
+                    if args.zero_out_others:
+                        out_filt[:,int(optimal_num_filters[i]):]=0
+                        out_bias[int(optimal_num_filters[i]):]=0
+                    
                     out_filt=out_filt.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
                     model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt))
                     model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias))
@@ -391,9 +394,10 @@ def main():
                     optimal_num_filters[i]=filter_selection(model.act[list(model.act.keys())[i]],lx,i, threshold=t)
                     print ('Optimal filter list: {} after layer {} PCAs'.format (optimal_num_filters,i+1))
                     
-                    ## Zeroing out certain portion of weights 
-                    out_filt_next[:,int(optimal_num_filters[i]):]=0
-                    out_bias_next[int(optimal_num_filters[i]):]=0
+                    ## Zeroing out certain portion of weights
+                    if args.zero_out_others:
+                        out_filt_next[:,int(optimal_num_filters[i]):]=0
+                        out_bias_next[int(optimal_num_filters[i]):]=0
                     out_filt_next=out_filt_next.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
                     model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt_next))
                     model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias_next))
