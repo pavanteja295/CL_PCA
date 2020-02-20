@@ -63,7 +63,7 @@ class Net(nn.Module):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=32, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
@@ -104,7 +104,8 @@ def main():
     parser.add_argument('--var_kept', type=float, default=0.995, metavar='VK',
                         help='percentage of PCA variance kept during training (default: 99.5%)')
     parser.add_argument('--finetune_pca',  default=False, action='store_true', help='dont tune after PCA')
-
+    parser.add_argument('--add_pca',  default=False, action='store_true', help='dont tune after PCA')
+    
     parser.add_argument('--file_suffix', dest='file_suffix', default='default', type=str,
                         help="Exp name to be added to the suffix")
     # parser.add_argument('--', type=float, default=0.995, metavar='VK',
@@ -316,15 +317,26 @@ def main():
                     optimal_num_filters[i], pca = run_PCA(model.act[list(model.act.keys())[i]],0,out_size,threshold=t) 
                     print('Opt_num_filter for task 1: ', optimal_num_filters) 
                     filter1 =model.state_dict()[list(model.state_dict().keys())[i*2]].cpu().numpy().reshape(out_size,inp_size*k_size*k_size).swapaxes(0,1)
-                    # projecting the filters into new PCA basis
-                    out_filt=np.matmul(filter1,np.transpose(pca.components_)) 
-                    ## Applying PCA transformation to the filters 
                     bias1   =model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].cpu().numpy()
-                    out_bias=np.matmul(bias1,np.transpose(pca.components_))    
+                    # projecting the filters into new PCA basis
+
+                    ## Applying PCA transformation to the filters 
+                    if args.add_pca:
+                        # pca_xform = 
+                        out_filt = np.matmul(filter1,np.transpose(pca.components_))    
+                        
+                        out_bias = np.matmul(bias1,np.transpose(pca.components_))  
+                    else:
+                        out_filt =  filter1
+                        out_bias = bias1
+
+                    # out_filt=np.matmul(filter1,np.transpose(pca.components_)) 
+                    ## Applying PCA transformation to the filters 
+                    
 
                     ### Zeroing out certain portion of weights keeping the required amount of filters from the task                 
-                    #out_filt[:,int(optimal_num_filters[i]):]=0
-                    #out_bias[int(optimal_num_filters[i]):]=0
+                    out_filt[:,int(optimal_num_filters[i]):]=0
+                    out_bias[int(optimal_num_filters[i]):]=0
                     out_filt=out_filt.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
                     model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt))
                     model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias))
@@ -335,13 +347,20 @@ def main():
 
                     ## PCA Transformation Step
                     pca_xform=PCA_transformation(model.act[list(model.act.keys())[i]],model_param,lx, i, threshold=0.999)
-                    
+                    # import pdb; pdb.set_trace()
                     # Updating model with PCA filters  
                     filter1 =model.state_dict()[list(model.state_dict().keys())[i*2]].cpu().numpy().reshape(out_size,inp_size*k_size*k_size).swapaxes(0,1)
+                    bias1    = model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].cpu().numpy()
+
                     ## Applying PCA transformation to the filters 
-                    out_filt=np.matmul(filter1,np.transpose(pca_xform)) 
-                    bias1   =model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].cpu().numpy()
-                    out_bias=np.matmul(bias1,np.transpose(pca_xform))  
+                    if args.add_pca:
+                        # pca_xform = 
+                        out_filt = np.matmul(filter1,np.transpose(pca_xform))    
+                        
+                        out_bias = np.matmul(bias1,np.transpose(pca_xform))  
+                    else:
+                        out_filt =  filter1
+                        out_bias = bias1
 
                     ### UPDATE THE MODEL WITH FIRST STAGE OF PCA                       
                     out_filt_next= out_filt.copy()
@@ -372,12 +391,12 @@ def main():
                     optimal_num_filters[i]=filter_selection(model.act[list(model.act.keys())[i]],lx,i, threshold=t)
                     print ('Optimal filter list: {} after layer {} PCAs'.format (optimal_num_filters,i+1))
                     
-                    ### Zeroing out certain portion of weights 
-                    #out_filt_next[:,int(optimal_num_filters[i]):]=0
-                    #out_bias_next[int(optimal_num_filters[i]):]=0
-                    # out_filt_next=out_filt_next.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
-                    # model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt_next))
-                    # model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias_next))
+                    ## Zeroing out certain portion of weights 
+                    out_filt_next[:,int(optimal_num_filters[i]):]=0
+                    out_bias_next[int(optimal_num_filters[i]):]=0
+                    out_filt_next=out_filt_next.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
+                    model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt_next))
+                    model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias_next))
                 
                 #########------------------------------------- Retraining after PCA ------------------------------------############
                 optim_list = [  {'params': model.conv1.parameters()},
@@ -412,6 +431,7 @@ def main():
                         layer=i       
                         loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
             
+                # import pdb; pdb.set_trace()
                 chk_finetune = 'finetune' if args.finetune_pca else 'NO finetune'
 
                 print('Test accuracy with ' +  chk_finetune )
@@ -419,11 +439,11 @@ def main():
                 writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i), acc_all_fine, 3)
 
                 print('Test accuracy with ' +  chk_finetune )
-                loss_test, acc_all_train = test(args, model, device, test_loader,loss_test) 
+                loss_test, acc_all_train = test(args, model, device, train_loader,loss_test) 
                 writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 3)
 
                 print('Test accuracy with ' +  chk_finetune )
-                loss_test, acc_train_sudo = test(args, model, device, test_loader,loss_test) 
+                loss_test, acc_train_sudo = test(args, model, device, train_loader_sudo,loss_test) 
                 writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 3)
 
                 acc=test_acc_save(args, model, device, test_loader,loss_test)
@@ -437,7 +457,7 @@ def main():
             filter_num = [lx[0],lx[0],lx[1],lx[1],lx[2],lx[2],lx[3],lx[3],lx[4],lx[4]]           
 
             
-            ## Final PCA for finding references for the next task -- will use in determining how many filters we will need for next task in each layers 
+            # Final PCA for finding references for the next task -- will use in determining how many filters we will need for next task in each layers 
             for ii in range (5):
                 out_size = model.state_dict()[list(model.state_dict().keys())[ii*2]].size(0)
                 test(args, model, device, train_loader_sudo,sudo) #.......collecting activation 
