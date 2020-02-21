@@ -192,9 +192,9 @@ def main():
         print('Classifing {}-{} | Task id-{}'.format(args.num_out*args.split,args.num_out*(args.split+1)-1,idx+1))
         print('Loading split CIFAR10 train task {}...'.format(args.split+1))
         train_loader = torch.utils.data.DataLoader(train_task[args.split],batch_size=args.batch_size, shuffle=True, **kwargs) ## train_task name  
-        train_loader_sudo = torch.utils.data.DataLoader(train_task[args.split],batch_size=32, shuffle=True, **kwargs)
+        train_loader_sudo = torch.utils.data.DataLoader(train_task[args.split],batch_size=1000, shuffle=True, **kwargs)
         print('Loading split CIFAR10 test task {}...'.format(args.split+1))
-        test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=32, shuffle=True, **kwargs) ## test_task name
+        test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=1000, shuffle=True, **kwargs) ## test_task name
                 
     #######--------------------------------------------------train------------------------------------###################      
         if (args.train ==1):            
