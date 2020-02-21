@@ -322,9 +322,9 @@ def main():
 
             
             model_param = {'state_dict': model.state_dict(), 'pca_weights': pca_weights, 'pca_opt_num': pca_opt_num}  
-        
+        model_root  = os.path.expanduser('PARAM/'+args.param_dir)
         print(model_param['pca_opt_num'])
-        torch.save(model_param,'/home/pavanteja/workspace/CL_PCA/PCA_CL_github/PARAM/CIFAR10_task/baseline_new.pth')
+        torch.save(model_param,os.path.join(model_root, 'baseline_new.pth'))
         # test
         # pca_final_ = {}
         # import pdb; pdb.set_trace()
