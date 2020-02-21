@@ -314,7 +314,7 @@ def main():
                     t = args.var_kept 
                     name_key = n.split('.')[0]
                     optimal_num_filters, pca = run_PCA(model.act[name_key],0,out_size,threshold=t) 
-                    pca_weights[n] = np.transpose(pca.components_[:int(optimal_num_filters)])
+                    pca_weights[n] = np.transpose(pca.components_)
                     pca_weights[name_key + '.bias'] = np.transpose(pca.components_)
                     pca_opt_num[n] = optimal_num_filters
                     pca_opt_num[name_key + '.bias'] = optimal_num_filters
