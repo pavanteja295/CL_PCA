@@ -32,25 +32,25 @@ class Net(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        self.act['conv1_pre_relu']=x
+        self.act['conv1']=x
         x = F.relu(x)
         x = self.conv2(x)
-        self.act['conv2_pre_relu']=x
+        self.act['conv2']=x
         x = F.relu(x)
         x = F.max_pool2d(x, 2, 2)
         x = self.drop_outA(x)
         
         x = self.conv3(x)
-        self.act['conv3_pre_relu']=x
+        self.act['conv3']=x
         x = F.relu(x)
         x = self.conv4(x)
-        self.act['conv4_pre_relu']=x
+        self.act['conv4']=x
         x = F.relu(x)
         x = F.max_pool2d(x, 2, 2)
         x = self.drop_outB(x)
         
         x = self.conv5(x)
-        self.act['conv5_pre_relu']=x
+        self.act['conv5']=x
         x = F.relu(x)
         x = F.avg_pool2d(x, 2, 2)
         x = x.view(-1, 128*4)
@@ -186,7 +186,7 @@ def main():
     accuracy_retrain =[]
     writer = SummaryWriter(log_dir="runs/" + args.file_suffix)
 
-    for idx in range (5):
+    for idx in range (1):
         #args.split = input('specify args.split:')
         args.split = idx 
         print('Classifing {}-{} | Task id-{}'.format(args.num_out*args.split,args.num_out*(args.split+1)-1,idx+1))
@@ -280,7 +280,6 @@ def main():
                 model.load_state_dict(model_param['state_dict'])
                 
                 if (args.split > 0):
-                    # import pdb; pdb.set_trace()
                     running_param = torch.load(running_param_fname)# load running filter and class Weight and bias
                     keep_classifier_list = running_param['classifier_list']
                     opt_filter_list = running_param['opt_filter_list']
@@ -292,245 +291,91 @@ def main():
                     opt_filter_list = []
                     filter_num =[]
 
-            for i in range(5): # Here '5' corresponds to 5 convolutional layers 
-                out_size    =model.state_dict()[list(model.state_dict().keys())[i*2]].size(0)
-                inp_size    =model.state_dict()[list(model.state_dict().keys())[i*2]].size(1)
-                k_size      =model.state_dict()[list(model.state_dict().keys())[i*2]].size(2)
+            params = {n: p for n, p in model.named_parameters()}
+            pca_weights = {}
+            for n, p in params.items(): 
+                if 'weight' in n and 'last' not in n :
+                    out_size = model.state_dict()[n].size(0)
+                    print('Test accuracy before even PCA compression' ) 
+        
 
-                print('Test accuracy before even PCA compression' ) 
-                loss_test, acc_bf_pca =test(args, model, device, test_loader,loss_test) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i), acc_bf_pca, 0)
-
-                loss_test, acc_all_train =test(args, model, device, train_loader,loss_test) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 0)
-
-                loss_test, acc_train_sudo =test(args, model, device, train_loader_sudo, loss_test) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 0)
-
-                #########------------------------------------- Run PCA ------------------------------------############
-                if (args.split == 0):
-                    # import pdb; pdb.set_trace()
-                    print ('Collecting activation for PCA Compression at layer {}'.format(i+1))
+                    #########------------------------------------- Run PCA ------------------------------------############
+                
+                    print ('Collecting activation for PCA Compression at layer' ,  n)
                     #collecting activation for PCA
+
+                    # loaded activations
                     test(args, model, device, train_loader_sudo,sudo) 
+
                     # specify the amount of PCA variance kept  
                     t = args.var_kept 
-                    ## ----- First PCA Compression step (For 1st Task)---- ##
-                    
-                    optimal_num_filters[i], pca = run_PCA(model.act[list(model.act.keys())[i]],0,out_size,threshold=t) 
-                    print('Opt_num_filter for task 1: ', optimal_num_filters) 
-                    filter1 =model.state_dict()[list(model.state_dict().keys())[i*2]].cpu().numpy().reshape(out_size,inp_size*k_size*k_size).swapaxes(0,1)
-                    bias1   =model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].cpu().numpy()
-                    # projecting the filters into new PCA basis
+                    name_key = n.split('.')[0]
+                    optimal_num_filters, pca = run_PCA(model.act[name_key],0,out_size,threshold=t) 
+                    pca_weights[n] = np.transpose(pca.components_[:int(optimal_num_filters)])
+                    pca_weights[name_key + '.bias'] = np.transpose(pca.components_[:int(optimal_num_filters)])
 
-                    ## Applying PCA transformation to the filters 
-                    if args.add_pca:
-                        print('Project into PCA')
-                        out_filt = np.matmul(filter1,np.transpose(pca.components_))    
-                        
-                        out_bias = np.matmul(bias1,np.transpose(pca.components_))  
-                    else:
-                        print('No projection to PCA')
-                        out_filt =  filter1
-                        out_bias = bias1
 
-                    # out_filt=np.matmul(filter1,np.transpose(pca.components_)) 
-                    ## Applying PCA transformation to the filters 
-                    
-
-                    ### Zeroing out certain portion of weights keeping the required amount of filters from the task                 
-                    if args.zero_out_others:
-                        out_filt[:,int(optimal_num_filters[i]):]=0
-                        out_bias[int(optimal_num_filters[i]):]=0
-                    
-                    out_filt=out_filt.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
-                    model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt))
-                    model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias))
-                
-                else: 
-                    # import pdb; pdb.set_trace()
-                    print ('Collecting activation for PCA Transformation Step at layer {}'.format(i+1))          
-                    test(args, model, device, train_loader_sudo,sudo) #.......collecting activation 
-
-                    ## PCA Transformation Step
-                    pca_xform=PCA_transformation(model.act[list(model.act.keys())[i]],model_param,lx, i, threshold=0.999)
-
-                    filter1 =model.state_dict()[list(model.state_dict().keys())[i*2]].cpu().numpy().reshape(out_size,inp_size*k_size*k_size).swapaxes(0,1)
-                    bias1    = model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].cpu().numpy()
-
-                    ## Applying PCA transformation to the filters 
-                    if args.add_pca:
-                        # pca_xform = 
-                        out_filt = np.matmul(filter1,np.transpose(pca_xform))    
-                        
-                        out_bias = np.matmul(bias1,np.transpose(pca_xform))  
-                    else:
-                        out_filt =  filter1
-                        out_bias = bias1
-
-                    ### UPDATE THE MODEL WITH FIRST STAGE OF PCA                       
-                    out_filt_next= out_filt.copy()
-                    out_bias_next= out_bias.copy()
-                    out_filt=out_filt.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
-                    model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt))
-                    model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias))               
-                    
-                    print ('Collecting activation for Selection Step at layer {}'.format(i+1) ) 
-                    # specify the amount of PCA variance kept  
-                    t = args.var_kept
-
-                    print('Accuracy before filter selection on all train data')
-                    _, acc_all_train = test(args, model, device, train_loader,[]) 
-                    writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 1)
-                    
-
-                    print('Accuracy before filter selection on all test data')
-                    _, acc_all_test = test(args, model, device, test_loader,[]) 
-                    writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i), acc_all_test, 1)
-                    #collecting activation 
-
-                    print('Accuracy before filter selection on PCA used data')
-                    _, acc_train_sudo = test(args, model, device, train_loader_sudo,sudo) 
-                    writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 1)
             
-                    ## Filter Selection Step 
-                    optimal_num_filters[i]=filter_selection(model.act[list(model.act.keys())[i]],lx,i, threshold=t)
-                    print ('Optimal filter list: {} after layer {} PCAs'.format (optimal_num_filters,i+1))
-                    
-                    ## Zeroing out certain portion of weights
-                    if args.zero_out_others:
-                        out_filt_next[:,int(optimal_num_filters[i]):]=0
-                        out_bias_next[int(optimal_num_filters[i]):]=0
-                    out_filt_next=out_filt_next.reshape(inp_size,k_size,k_size,out_size).swapaxes(0,3).swapaxes(2,3).swapaxes(2,1)
-                    model.state_dict()[list(model.state_dict().keys())[i*2]].copy_(torch.Tensor(out_filt_next))
-                    model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias_next))
-                
-                #########------------------------------------- Retraining after PCA ------------------------------------############
-                optim_list = [  {'params': model.conv1.parameters()},
-                                {'params': model.conv2.parameters()},
-                                {'params': model.conv3.parameters()},
-                                {'params': model.conv4.parameters()},
-                                {'params': model.conv5.parameters()},                                          
-                                {'params': model.last.parameters()}]
-
-                print ('Starting learning rate for retraining Task{} is {}'.format(idx+1,args.lr))
-
-                print('Accuracy after filter selection before finetuning on all train data')
-                _, acc_all_train = test(args, model, device, train_loader,[]) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 2)
-
-                print('Accuracy after filter selection before finetuning on all test data')
-                _, acc_all_test = test(args, model, device, test_loader,[]) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i) , acc_all_test, 2)
-                #collecting activation 
-
-                print('Accuracy after filter selection before finetuning on PCA used data')
-                _, acc_train_sudo = test(args, model, device, train_loader_sudo,sudo) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 2)
-
-                # print('Test accuracy before finetuning' )
-                # loss_test=test(args, model, device, test_loader,loss_test) 
-                optimizer = optim.SGD(optim_list, lr=args.lr, momentum=args.momentum) # using SGD with momentum 
-                if args.finetune_pca:
-                    for epoch in range(1, args.epoch_list[i] + 1):   
-                        if ( epoch == int(args.epoch_list[i]*0.9) ):
-                        	adjust_learning_rate(optimizer,epoch,args)
-                        layer=i       
-                        loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
-            
-                # import pdb; pdb.set_trace()
-                chk_finetune = 'finetune' if args.finetune_pca else 'NO finetune'
-
-                print('Test accuracy with ' +  chk_finetune )
-                loss_test, acc_all_fine = test(args, model, device, test_loader,loss_test) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/Test_layer_' + str(i), acc_all_fine, 3)
-
-                print('Test accuracy with ' +  chk_finetune )
-                loss_test, acc_all_train = test(args, model, device, train_loader,loss_test) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/Train_layer_' + str(i), acc_all_train, 3)
-
-                print('Test accuracy with ' +  chk_finetune )
-                loss_test, acc_train_sudo = test(args, model, device, train_loader_sudo,loss_test) 
-                writer.add_scalar('Runs/Task'+ str(idx)+'/PCA_layer_' + str(i), acc_train_sudo, 3)
-
-                acc=test_acc_save(args, model, device, test_loader,loss_test)
-                accuracy_retrain.append(acc)
-
-            ##--------------------------------------------------------Saving --------------------------------------------------------## 
-            # saving test accuracy after retraining 
-
-            #Final PCA for finding references for the next task -- will use in determining how many filters we will need for next task in each layers 
-            for ii in range (5):
-                out_size = model.state_dict()[list(model.state_dict().keys())[ii*2]].size(0)
-                test(args, model, device, train_loader_sudo,sudo) #.......collecting activation 
-                _,pca=run_PCA(model.act[list(model.act.keys())[ii]],0,out_size)
-                singular_values.append(pca.singular_values_)
-                pca_comp_final.append(pca.components_)
-            
-        filter_num = []
-
-        #baseline model
-        if not args.retrain:
-            # optimal_num_filters = []
-            for i in range(5):
-                # import pdb; pdb.set_trace()
-                out_size    =model.state_dict()[list(model.state_dict().keys())[i*2]].size(0)
-                #bias1  =model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].cpu().numpy()
-                optimal_num_filters[i] = out_size
-            
-        lx= optimal_num_filters
-        filter_num = [lx[0],lx[0],lx[1],lx[1],lx[2],lx[2],lx[3],lx[3],lx[4],lx[4]]           
-            
-        print ('Current Task  filter list:',lx)
+            model_param = {'state_dict': model.state_dict(), 'pca_weights': pca_weights}  
         
-        # saving task specific classifer weights and corresponding filter statistics 
-        fc_weight = model.last.weight.detach().cpu().numpy()
-        fc_bias   = model.last.bias.detach().cpu().numpy()
-        
-        opt_filter_list.append(optimal_num_filters)
-        keep_classifier_list.append(fc_weight)
-        keep_classifier_list.append(fc_bias)  
-        running_param = {'opt_filter_list' : opt_filter_list, 'classifier_list' : keep_classifier_list }
+        torch.save(model_param,'/home/pavanteja/workspace/CL_PCA/PCA_CL_github/PARAM/CIFAR10_task/baseline_new.pth')
+        # test
+        # pca_final_ = {}
+        # import pdb; pdb.set_trace()
 
-        if args.train:
-            # Finetuning the classifer weights only with the data from next task before training the full model :: this step slightly improves the overall classification accuracy for the new task 
-            if (args.classifier_finetune == 1 and args.split<4):
-                args.split += 1 
-                print('Finetuning Classifier for Classifing {}-{} | Task id-{}'.format(args.num_out*args.split,args.num_out*(args.split+1)-1,args.split+1))
-                print('Loading split CIFAR10 train task {}...'.format(args.split+1))
-                train_loader = torch.utils.data.DataLoader(train_task[args.split],batch_size=args.batch_size, shuffle=True, **kwargs) ## train_task name  
-                print('Loading split CIFAR10 test task {}...'.format(args.split+1))
-                test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=1000, shuffle=True, **kwargs) ## test_task name
-                args.lr = 0.001
-                print ('Starting learning rate for retraining Task{} is {}'.format(args.split+1,args.lr))
-                optimizer = optim.SGD(model.last.parameters(), lr=args.lr, momentum=args.momentum) # using SGD with momentum :: Trains classifier only 
-                loss_test = []
-                for epoch in range (args.finetune_epoch+1):
-                    train_classifier(args, model, device, train_loader, optimizer, epoch)
-                    test(args, model, device, test_loader,loss_test)
+        # for n, p in params.items():
+             
+        # import pdb; pdb.set_trace()
 
-            ## Initialize the pruned out filters of the original network with random initializaton values before training on new task  
-            for k, (p,p_old) in enumerate(zip(model.parameters(),oldmodel.parameters())):
-                if (k%2==0 and k<10):
-                    temp_old=p_old.detach().cpu().numpy()
-                    temp    =p.detach().cpu().numpy()
-                    temp [int(filter_num[k]):,:,:,:] = temp_old[int(filter_num[k]):,:,:,:]
-                    model.state_dict()[list(model.state_dict().keys())[k]].copy_(torch.Tensor(temp))
-                elif (k%2==1 and k<10): 
-                    temp_old=p_old.detach().cpu().numpy()
-                    temp    =p.detach().cpu().numpy()
-                    temp [int(filter_num[k]):] = temp_old[int(filter_num[k]):]
-                    model.state_dict()[list(model.state_dict().keys())[k]].copy_(torch.tensor(temp)) 
+
+            # # save and print the model statistics 
+            # model_param = {'state_dict': model.state_dict(), 'pca_comp_final': pca_comp_final,'sing_val': singular_values}
+            # if (args.save_model):
+            #     print('Saving Model...')
+            #     torch.save(model_param,param_fnameB_rt)
+            #     torch.save(running_param,running_param_fname)
+            # print ('Training Accuracy:',accuracy_train)
+            # print ('Retraining Accuracy:',accuracy_retrain)
+            # print ('Opt_filter_list:',opt_filter_list)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+            #     #########------------------------------------- Retraining after PCA ------------------------------------############
+            #     optim_list = [  {'params': model.conv1.parameters()},
+            #                     {'params': model.conv2.parameters()},
+            #                     {'params': model.conv3.parameters()},
+            #                     {'params': model.conv4.parameters()},
+            #                     {'params': model.conv5.parameters()},                                          
+            #                     {'params': model.fc1.parameters()}]
+
+
+            #     # print('Test accuracy before finetuning' )
+            #     # loss_test=test(args, model, device, test_loader,loss_test) 
+            #     optimizer = optim.SGD(optim_list, lr=args.lr, momentum=args.momentum) # using SGD with momentum 
+            #     if args.finetune_pca:
+            #         for epoch in range(1, args.epoch_list[i] + 1):   
+            #             if ( epoch == int(args.epoch_list[i]*0.9) ):
+            #             	adjust_learning_rate(optimizer,epoch,args)
+            #             layer=i       
+            #             loss_hist=train_next_pca(args, model, device, train_loader, optimizer, epoch,layer,loss_hist,optimal_num_filters, filter_num)
             
-            # save and print the model statistics 
-            model_param = {'state_dict': model.state_dict(), 'pca_comp_final': pca_comp_final,'sing_val': singular_values}
-            if (args.save_model):
-                print('Saving Model...')
-                torch.save(model_param,param_fnameB_rt)
-                torch.save(running_param,running_param_fname)
-            print ('Training Accuracy:',accuracy_train)
-            print ('Retraining Accuracy:',accuracy_retrain)
-            print ('Opt_filter_list:',opt_filter_list)
+
+            # ##--------------------------------------------------------Saving --------------------------------------------------------## 
+            # # saving test accuracy after retraining 
+            
         
                   
 if __name__ == '__main__':
