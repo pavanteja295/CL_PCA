@@ -63,7 +63,7 @@ class Net(nn.Module):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=32, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
@@ -192,9 +192,9 @@ def main():
         print('Classifing {}-{} | Task id-{}'.format(args.num_out*args.split,args.num_out*(args.split+1)-1,idx+1))
         print('Loading split CIFAR10 train task {}...'.format(args.split+1))
         train_loader = torch.utils.data.DataLoader(train_task[args.split],batch_size=args.batch_size, shuffle=True, **kwargs) ## train_task name  
-        train_loader_sudo = torch.utils.data.DataLoader(train_task[args.split],batch_size=32, shuffle=True, **kwargs)
+        train_loader_sudo = torch.utils.data.DataLoader(train_task[args.split],batch_size=5000, shuffle=True, **kwargs)
         print('Loading split CIFAR10 test task {}...'.format(args.split+1))
-        test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=32, shuffle=True, **kwargs) ## test_task name
+        test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=5000, shuffle=True, **kwargs) ## test_task name
                 
     #######--------------------------------------------------train------------------------------------###################      
         if (args.train ==1):            
@@ -293,6 +293,8 @@ def main():
 
             params = {n: p for n, p in model.named_parameters()}
             pca_weights = {}
+            pca_opt_num  = {}
+            
             for n, p in params.items(): 
                 if 'weight' in n and 'last' not in n :
                     out_size = model.state_dict()[n].size(0)
@@ -304,6 +306,7 @@ def main():
                     print ('Collecting activation for PCA Compression at layer' ,  n)
                     #collecting activation for PCA
 
+                    # import pdb; pdb.set_trace()
                     # loaded activations
                     test(args, model, device, train_loader_sudo,sudo) 
 
@@ -312,12 +315,15 @@ def main():
                     name_key = n.split('.')[0]
                     optimal_num_filters, pca = run_PCA(model.act[name_key],0,out_size,threshold=t) 
                     pca_weights[n] = np.transpose(pca.components_[:int(optimal_num_filters)])
-                    pca_weights[name_key + '.bias'] = np.transpose(pca.components_[:int(optimal_num_filters)])
+                    pca_weights[name_key + '.bias'] = np.transpose(pca.components_)
+                    pca_opt_num[n] = optimal_num_filters
+                    pca_opt_num[name_key + '.bias'] = optimal_num_filters
 
 
             
-            model_param = {'state_dict': model.state_dict(), 'pca_weights': pca_weights}  
+            model_param = {'state_dict': model.state_dict(), 'pca_weights': pca_weights, 'pca_opt_num': pca_opt_num}  
         
+        print(model_param['pca_opt_num'])
         torch.save(model_param,'/home/pavanteja/workspace/CL_PCA/PCA_CL_github/PARAM/CIFAR10_task/baseline_new.pth')
         # test
         # pca_final_ = {}
