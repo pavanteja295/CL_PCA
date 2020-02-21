@@ -192,9 +192,9 @@ def main():
         print('Classifing {}-{} | Task id-{}'.format(args.num_out*args.split,args.num_out*(args.split+1)-1,idx+1))
         print('Loading split CIFAR10 train task {}...'.format(args.split+1))
         train_loader = torch.utils.data.DataLoader(train_task[args.split],batch_size=args.batch_size, shuffle=True, **kwargs) ## train_task name  
-        train_loader_sudo = torch.utils.data.DataLoader(train_task[args.split],batch_size=1000, shuffle=True, **kwargs)
+        train_loader_sudo = torch.utils.data.DataLoader(train_task[args.split],batch_size=32, shuffle=True, **kwargs)
         print('Loading split CIFAR10 test task {}...'.format(args.split+1))
-        test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=1000, shuffle=True, **kwargs) ## test_task name
+        test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=32, shuffle=True, **kwargs) ## test_task name
                 
     #######--------------------------------------------------train------------------------------------###################      
         if (args.train ==1):            
@@ -262,15 +262,17 @@ def main():
             test_masked_model.load_state_dict(model_param['state_dict'])
             print('Accuracy real is')
             call_test_model (model,test_masked_model, args , device, test_loader, sudo, opt_filter_list[args.split],keep_classifier_list,idx) 
-            
+        
+        optimal_num_filters = np.zeros(5)
+        pca_comp_final=[]
+        singular_values=[]            
         ############----------------------------------------Re-train------------------------------------###################  
+        
         if (args.retrain == 1): 
             sudo=[]
             loss_hist=[]
             loss_test=[]
-            optimal_num_filters = np.zeros(5)
-            pca_comp_final=[]
-            singular_values=[]
+
             args.lr = 0.001
             
             if (args.train == 0) :
@@ -345,6 +347,7 @@ def main():
                     model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].copy_(torch.Tensor(out_bias))
                 
                 else: 
+                    # import pdb; pdb.set_trace()
                     print ('Collecting activation for PCA Transformation Step at layer {}'.format(i+1))          
                     test(args, model, device, train_loader_sudo,sudo) #.......collecting activation 
 
@@ -455,13 +458,8 @@ def main():
 
             ##--------------------------------------------------------Saving --------------------------------------------------------## 
             # saving test accuracy after retraining 
-      
-            lx= optimal_num_filters
-            print ('Current Task  filter list:',lx)
-            filter_num = [lx[0],lx[0],lx[1],lx[1],lx[2],lx[2],lx[3],lx[3],lx[4],lx[4]]           
 
-            
-            # Final PCA for finding references for the next task -- will use in determining how many filters we will need for next task in each layers 
+            #Final PCA for finding references for the next task -- will use in determining how many filters we will need for next task in each layers 
             for ii in range (5):
                 out_size = model.state_dict()[list(model.state_dict().keys())[ii*2]].size(0)
                 test(args, model, device, train_loader_sudo,sudo) #.......collecting activation 
@@ -469,52 +467,75 @@ def main():
                 singular_values.append(pca.singular_values_)
                 pca_comp_final.append(pca.components_)
             
-            # saving task specific classifer weights and corresponding filter statistics 
-            fc_weight = model.fc1.weight.detach().cpu().numpy()
-            fc_bias   = model.fc1.bias.detach().cpu().numpy()
-            
-            opt_filter_list.append(optimal_num_filters)
-            keep_classifier_list.append(fc_weight)
-            keep_classifier_list.append(fc_bias)  
-            running_param = {'opt_filter_list' : opt_filter_list, 'classifier_list' : keep_classifier_list }
+        filter_num = []
 
-            # Finetuning the classifer weights only with the data from next task before training the full model :: this step slightly improves the overall classification accuracy for the new task 
-            if (args.classifier_finetune == 1 and args.split<4):
-                args.split += 1 
-                print('Finetuning Classifier for Classifing {}-{} | Task id-{}'.format(args.num_out*args.split,args.num_out*(args.split+1)-1,args.split+1))
-                print('Loading split CIFAR10 train task {}...'.format(args.split+1))
-                train_loader = torch.utils.data.DataLoader(train_task[args.split],batch_size=args.batch_size, shuffle=True, **kwargs) ## train_task name  
-                print('Loading split CIFAR10 test task {}...'.format(args.split+1))
-                test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=1000, shuffle=True, **kwargs) ## test_task name
-                args.lr = 0.001
-                print ('Starting learning rate for retraining Task{} is {}'.format(args.split+1,args.lr))
-                optimizer = optim.SGD(model.fc1.parameters(), lr=args.lr, momentum=args.momentum) # using SGD with momentum :: Trains classifier only 
-                loss_test = []
-                for epoch in range (args.finetune_epoch+1):
-                    train_classifier(args, model, device, train_loader, optimizer, epoch)
-                    test(args, model, device, test_loader,loss_test)
-
-            ## Initialize the pruned out filters of the original network with random initializaton values before training on new task  
-            for k, (p,p_old) in enumerate(zip(model.parameters(),oldmodel.parameters())):
-                if (k%2==0 and k<10):
-                    temp_old=p_old.detach().cpu().numpy()
-                    temp    =p.detach().cpu().numpy()
-                    temp [int(filter_num[k]):,:,:,:] = temp_old[int(filter_num[k]):,:,:,:]
-                    model.state_dict()[list(model.state_dict().keys())[k]].copy_(torch.Tensor(temp))
-                elif (k%2==1 and k<10): 
-                    temp_old=p_old.detach().cpu().numpy()
-                    temp    =p.detach().cpu().numpy()
-                    temp [int(filter_num[k]):] = temp_old[int(filter_num[k]):]
-                    model.state_dict()[list(model.state_dict().keys())[k]].copy_(torch.tensor(temp)) 
+        #baseline model
+        if not args.retrain:
+            # optimal_num_filters = []
+            for i in range(5):
+                # import pdb; pdb.set_trace()
+                out_size    =model.state_dict()[list(model.state_dict().keys())[i*2]].size(0)
+                #bias1  =model.state_dict()[list(model.state_dict().keys())[(i*2)+1]].cpu().numpy()
+                optimal_num_filters[i] = out_size
             
-            # save and print the model statistics 
-            model_param = {'state_dict': model.state_dict(), 'pca_comp_final': pca_comp_final,'sing_val': singular_values}
-            if (args.save_model):
-                print('Saving Model...')
-                torch.save(model_param,param_fnameB_rt)
-                torch.save(running_param,running_param_fname)
-            print ('Training Accuracy:',accuracy_train)
-            print ('Retraining Accuracy:',accuracy_retrain)
+        lx= optimal_num_filters
+        filter_num = [lx[0],lx[0],lx[1],lx[1],lx[2],lx[2],lx[3],lx[3],lx[4],lx[4]]           
+
+                
+#                    filter_num.append(out_size)
+            
+        print ('Current Task  filter list:',lx)
+            
+
+            
+
+            
+        # saving task specific classifer weights and corresponding filter statistics 
+        fc_weight = model.fc1.weight.detach().cpu().numpy()
+        fc_bias   = model.fc1.bias.detach().cpu().numpy()
+        
+        opt_filter_list.append(optimal_num_filters)
+        keep_classifier_list.append(fc_weight)
+        keep_classifier_list.append(fc_bias)  
+        running_param = {'opt_filter_list' : opt_filter_list, 'classifier_list' : keep_classifier_list }
+
+        # Finetuning the classifer weights only with the data from next task before training the full model :: this step slightly improves the overall classification accuracy for the new task 
+        if (args.classifier_finetune == 1 and args.split<4):
+            args.split += 1 
+            print('Finetuning Classifier for Classifing {}-{} | Task id-{}'.format(args.num_out*args.split,args.num_out*(args.split+1)-1,args.split+1))
+            print('Loading split CIFAR10 train task {}...'.format(args.split+1))
+            train_loader = torch.utils.data.DataLoader(train_task[args.split],batch_size=args.batch_size, shuffle=True, **kwargs) ## train_task name  
+            print('Loading split CIFAR10 test task {}...'.format(args.split+1))
+            test_loader = torch.utils.data.DataLoader(test_task[args.split],batch_size=1000, shuffle=True, **kwargs) ## test_task name
+            args.lr = 0.001
+            print ('Starting learning rate for retraining Task{} is {}'.format(args.split+1,args.lr))
+            optimizer = optim.SGD(model.fc1.parameters(), lr=args.lr, momentum=args.momentum) # using SGD with momentum :: Trains classifier only 
+            loss_test = []
+            for epoch in range (args.finetune_epoch+1):
+                train_classifier(args, model, device, train_loader, optimizer, epoch)
+                test(args, model, device, test_loader,loss_test)
+
+        ## Initialize the pruned out filters of the original network with random initializaton values before training on new task  
+        for k, (p,p_old) in enumerate(zip(model.parameters(),oldmodel.parameters())):
+            if (k%2==0 and k<10):
+                temp_old=p_old.detach().cpu().numpy()
+                temp    =p.detach().cpu().numpy()
+                temp [int(filter_num[k]):,:,:,:] = temp_old[int(filter_num[k]):,:,:,:]
+                model.state_dict()[list(model.state_dict().keys())[k]].copy_(torch.Tensor(temp))
+            elif (k%2==1 and k<10): 
+                temp_old=p_old.detach().cpu().numpy()
+                temp    =p.detach().cpu().numpy()
+                temp [int(filter_num[k]):] = temp_old[int(filter_num[k]):]
+                model.state_dict()[list(model.state_dict().keys())[k]].copy_(torch.tensor(temp)) 
+        
+        # save and print the model statistics 
+        model_param = {'state_dict': model.state_dict(), 'pca_comp_final': pca_comp_final,'sing_val': singular_values}
+        if (args.save_model):
+            print('Saving Model...')
+            torch.save(model_param,param_fnameB_rt)
+            torch.save(running_param,running_param_fname)
+        print ('Training Accuracy:',accuracy_train)
+        print ('Retraining Accuracy:',accuracy_retrain)
         print ('Opt_filter_list:',opt_filter_list)
         
                   
